@@ -12,6 +12,10 @@ const downloadBtn = document.getElementById('download-btn');
 const refreshHistoryBtn = document.getElementById('refresh-history');
 const selectedJobLabel = document.getElementById('selected-job-label');
 const resultStatus = document.getElementById('result-status');
+const typeBadge = document.getElementById('type-badge');
+const profileBadge = document.getElementById('profile-badge');
+const analysisDetails = document.getElementById('analysis-details');
+const errorBanner = document.getElementById('error-banner');
 
 const jobs = new Map();
 let selectedJobId = null;
@@ -24,6 +28,18 @@ const statusMap = {
   processing: 'در حال پردازش',
   done: 'انجام شد',
   error: 'خطا'
+};
+
+const typeMap = {
+  speech: { text: 'گفتار', classes: 'bg-blue-100 text-blue-700' },
+  music: { text: 'موزیک', classes: 'bg-pink-100 text-pink-700' },
+  mixed: { text: 'ترکیبی', classes: 'bg-amber-100 text-amber-700' }
+};
+
+const profileMap = {
+  balanced: { text: 'متعادل', classes: 'bg-green-100 text-green-700' },
+  noisy: { text: 'پُرنویز', classes: 'bg-red-100 text-red-700' },
+  music_mixed: { text: 'ترکیبی-موزیک', classes: 'bg-purple-100 text-purple-700' }
 };
 
 function showToast(message, type = 'info') {
@@ -40,6 +56,23 @@ function humanStatus(job) {
   return statusMap[job.status] || job.status;
 }
 
+function createBadge(text, classes) {
+  const span = document.createElement('span');
+  span.className = `px-2 py-1 rounded text-xs ${classes}`;
+  span.textContent = text;
+  return span;
+}
+
+function renderBadgesForJob(job, container) {
+  container.innerHTML = '';
+  if (job.audio_type && typeMap[job.audio_type]) {
+    container.appendChild(createBadge(typeMap[job.audio_type].text, typeMap[job.audio_type].classes));
+  }
+  if (job.asr_profile && profileMap[job.asr_profile]) {
+    container.appendChild(createBadge(profileMap[job.asr_profile].text, profileMap[job.asr_profile].classes));
+  }
+}
+
 function renderJobs() {
   const items = Array.from(jobs.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   jobsListEl.innerHTML = '';
@@ -54,12 +87,17 @@ function renderJobs() {
     const header = document.createElement('div');
     header.className = 'flex items-center justify-between gap-2';
     const title = document.createElement('div');
-    title.innerHTML = `<div class="font-semibold">${job.original_filename}</div><div class="text-xs text-gray-500">${new Date(job.created_at).toLocaleString('fa-IR')}</div>`;
+    const createdAt = new Date(job.created_at).toLocaleString('fa-IR');
+    title.innerHTML = `<div class="font-semibold">${job.original_filename}</div><div class="text-xs text-gray-500">${createdAt}</div>`;
     const statusBadge = document.createElement('span');
-    statusBadge.className = 'text-xs px-2 py-1 rounded ' + (job.status === 'done' ? 'bg-green-100 text-green-700' : job.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700');
+    statusBadge.className = 'text-xs px-2 py-1 rounded ' + (job.status === 'done' ? 'bg-green-100 text-green-700' : job.status == 'error' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700');
     statusBadge.textContent = humanStatus(job);
     header.appendChild(title);
     header.appendChild(statusBadge);
+
+    const badges = document.createElement('div');
+    badges.className = 'flex gap-2 flex-wrap text-xs';
+    renderBadgesForJob(job, badges);
 
     const progressWrap = document.createElement('div');
     progressWrap.className = 'w-full bg-gray-200 rounded-full h-2';
@@ -80,6 +118,7 @@ function renderJobs() {
     actions.appendChild(viewBtn);
 
     wrapper.appendChild(header);
+    wrapper.appendChild(badges);
     wrapper.appendChild(progressWrap);
     wrapper.appendChild(actions);
     jobsListEl.appendChild(wrapper);
@@ -97,6 +136,51 @@ function updateResultView() {
   toggleRaw.classList.toggle('text-white', !showClean);
   toggleRaw.classList.toggle('bg-gray-200', showClean);
   toggleRaw.classList.toggle('text-gray-800', showClean);
+}
+
+function renderAnalysis(job) {
+  if (!job) return;
+  if (job.audio_type && typeMap[job.audio_type]) {
+    typeBadge.className = `px-2 py-1 rounded text-xs inline-flex ${typeMap[job.audio_type].classes}`;
+    typeBadge.textContent = typeMap[job.audio_type].text;
+    typeBadge.classList.remove('hidden');
+  } else {
+    typeBadge.classList.add('hidden');
+  }
+  if (job.asr_profile && profileMap[job.asr_profile]) {
+    profileBadge.className = `px-2 py-1 rounded text-xs inline-flex ${profileMap[job.asr_profile].classes}`;
+    profileBadge.textContent = profileMap[job.asr_profile].text;
+    profileBadge.classList.remove('hidden');
+  } else {
+    profileBadge.classList.add('hidden');
+  }
+
+  const parts = [];
+  if (job.speech_ratio !== null && job.speech_ratio !== undefined) {
+    parts.push(`نسبت گفتار: ${(job.speech_ratio * 100).toFixed(1)}٪`);
+  }
+  if (job.music_prob !== null && job.music_prob !== undefined) {
+    parts.push(`احتمال موسیقی: ${(job.music_prob * 100).toFixed(1)}٪`);
+  }
+  if (job.snr_estimate !== null && job.snr_estimate !== undefined) {
+    parts.push(`برآورد نسبت سیگنال به نویز: ${job.snr_estimate.toFixed(1)} dB`);
+  }
+  if (job.duration_seconds) {
+    parts.push(`مدت زمان: ${job.duration_seconds} ثانیه`);
+  }
+  if (parts.length) {
+    analysisDetails.textContent = parts.join(' | ');
+    analysisDetails.classList.remove('hidden');
+  } else {
+    analysisDetails.classList.add('hidden');
+  }
+
+  if (job.status === 'error' && job.error_message) {
+    errorBanner.textContent = job.error_message;
+    errorBanner.classList.remove('hidden');
+  } else {
+    errorBanner.classList.add('hidden');
+  }
 }
 
 async function uploadFile(file) {
@@ -143,10 +227,12 @@ async function checkActiveJobs() {
       if (selectedJobId === job.id) {
         selectedJobLabel.textContent = `فایل: ${data.job.original_filename}`;
         resultStatus.textContent = `وضعیت: ${humanStatus(data.job)}`;
+        renderAnalysis(data.job);
       }
       if (data.job.status === 'done') {
         await loadResult(job.id);
       } else if (data.job.status === 'error') {
+        renderAnalysis(data.job);
         showToast(data.job.error_message || 'خطا در پردازش', 'error');
       }
     } catch (err) {
@@ -162,6 +248,7 @@ async function selectJob(jobId) {
   selectedJobId = jobId;
   selectedJobLabel.textContent = `فایل: ${job.original_filename}`;
   resultStatus.textContent = `وضعیت: ${humanStatus(job)}`;
+  renderAnalysis(job);
   if (job.status === 'done') {
     await loadResult(jobId);
   } else {
