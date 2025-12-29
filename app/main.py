@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .db import Base, SessionLocal, engine
@@ -23,13 +24,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-Base.metadata.create_all(bind=engine)
-ensure_storage_dirs()
+
+def migrate_jobs_table():
+    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        result = conn.execute(text("PRAGMA table_info(jobs);"))
+        existing = {row[1] for row in result.fetchall()}
+        columns = {
+            "duration_seconds": "INTEGER",
+            "audio_type": "TEXT",
+            "music_prob": "REAL",
+            "speech_ratio": "REAL",
+            "snr_estimate": "REAL",
+            "asr_profile": "TEXT",
+        }
+        for column, ddl in columns.items():
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {column} {ddl}"))
 
 
-@app.on_event("startup")
-def startup_event():
-    ensure_storage_dirs()
+def startup_requeue():
     session = SessionLocal()
     try:
         reset_processing_jobs(session)
@@ -42,6 +56,16 @@ def startup_event():
         session.commit()
     finally:
         session.close()
+
+
+migrate_jobs_table()
+ensure_storage_dirs()
+
+
+@app.on_event("startup")
+def startup_event():
+    ensure_storage_dirs()
+    startup_requeue()
     start_workers()
     start_cleanup()
 

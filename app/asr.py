@@ -39,20 +39,32 @@ def _load_whisper():
     return whisper.load_model(model_size, device=settings.MODEL_DEVICE)
 
 
-def _get_initial_prompt() -> Optional[str]:
-    prompt = (settings.INITIAL_PROMPT or "").strip()
-    return prompt or None
+def _profile_config(profile: str) -> dict:
+    profile = (profile or "balanced").lower()
+    if profile == "noisy":
+        return {
+            "beam_size": 15,
+            "prompt": (settings.PROMPT_NOISY or settings.PROMPT_BALANCED),
+        }
+    if profile == "music_mixed" or profile == "music":
+        return {
+            "beam_size": 15,
+            "prompt": (settings.PROMPT_MUSIC_MIXED or settings.PROMPT_BALANCED),
+        }
+    return {"beam_size": 10, "prompt": settings.PROMPT_BALANCED}
 
 
-def transcribe(wav_path: str) -> str:
-    prompt = _get_initial_prompt()
+def transcribe(wav_path: str, profile: str = "balanced") -> str:
+    config = _profile_config(profile)
+    prompt: Optional[str] = (config.get("prompt") or "").strip() or None
+    beam_size = config.get("beam_size", 10)
     try:
         model = _load_faster_whisper()
         segments, _ = model.transcribe(
             wav_path,
             language="fa",
-            beam_size=settings.BEAM_SIZE,
-            vad_filter=settings.VAD_FILTER,
+            beam_size=beam_size,
+            vad_filter=True,
             temperature=DEFAULT_TEMPERATURE,
             no_speech_threshold=DEFAULT_NO_SPEECH_THRESHOLD,
             condition_on_previous_text=True,
@@ -71,7 +83,7 @@ def transcribe(wav_path: str) -> str:
         result = model.transcribe(
             wav_path,
             language="fa",
-            beam_size=settings.BEAM_SIZE,
+            beam_size=beam_size,
             temperature=DEFAULT_TEMPERATURE,
             condition_on_previous_text=True,
             initial_prompt=prompt,

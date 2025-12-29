@@ -16,6 +16,7 @@ def ensure_storage_dirs():
     (base / "uploads").mkdir(parents=True, exist_ok=True)
     (base / "wav").mkdir(parents=True, exist_ok=True)
     (base / "denoised").mkdir(parents=True, exist_ok=True)
+    (base / "processed").mkdir(parents=True, exist_ok=True)
     (base / "results").mkdir(parents=True, exist_ok=True)
 
 
