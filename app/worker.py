@@ -1,6 +1,8 @@
 import threading
 import time
-from queue import Queue, Empty
+from datetime import datetime, timezone
+from queue import Empty, Full, Queue
+from typing import Dict, Set
 
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -11,28 +13,52 @@ from .models import Job
 from .settings import settings
 from .utils import delete_expired_jobs, ensure_storage_dirs
 
-job_queue: Queue[str] = Queue()
+job_queue: Queue[str] = Queue(maxsize=settings.MAX_QUEUE_SIZE)
+_queued_jobs: Set[str] = set()
+_queue_lock = threading.Lock()
+_job_locks: Dict[str, threading.Lock] = {}
+_job_locks_lock = threading.Lock()
 
 
-def enqueue_job(job_id: str):
-    job_queue.put(job_id)
+def _get_job_lock(job_id: str) -> threading.Lock:
+    with _job_locks_lock:
+        if job_id not in _job_locks:
+            _job_locks[job_id] = threading.Lock()
+        return _job_locks[job_id]
+
+
+def enqueue_job(job_id: str) -> bool:
+    with _queue_lock:
+        if job_id in _queued_jobs:
+            return True
+        try:
+            job_queue.put_nowait(job_id)
+        except Full:
+            return False
+        _queued_jobs.add(job_id)
+        return True
 
 
 def _update_job(session: Session, job: Job, **kwargs):
     for key, value in kwargs.items():
         setattr(job, key, value)
+    job.updated_at = datetime.now(timezone.utc)
     session.add(job)
     session.commit()
 
 
 def _process_job(job_id: str):
+    job_lock = _get_job_lock(job_id)
+    if not job_lock.acquire(blocking=False):
+        logger.info(f"Job {job_id} is already being processed; skipping duplicate queue entry")
+        return
     session = SessionLocal()
     try:
         job = session.get(Job, job_id)
         if not job:
             logger.error(f"Job {job_id} not found")
             return
-        _update_job(session, job, status="processing", progress=10)
+        _update_job(session, job, status="processing", progress=max(job.progress or 0, 10))
 
         wav_path = f"{settings.STORAGE_DIR.rstrip('/')}/wav/{job_id}.wav"
         try:
@@ -69,7 +95,7 @@ def _process_job(job_id: str):
             return
 
         try:
-            cleaned = text_clean.clean(text)
+            cleaned = text_clean.clean_text(text)
             _update_job(session, job, progress=95, cleaned_text=cleaned)
         except Exception as exc:
             _update_job(session, job, status="error", error_message=f"پاکسازی متن ناموفق بود: {exc}")
@@ -78,6 +104,7 @@ def _process_job(job_id: str):
         _update_job(session, job, status="done", progress=100)
     finally:
         session.close()
+        job_lock.release()
 
 
 def worker_loop():
@@ -87,6 +114,8 @@ def worker_loop():
             job_id = job_queue.get(timeout=1)
         except Empty:
             continue
+        with _queue_lock:
+            _queued_jobs.discard(job_id)
         try:
             _process_job(job_id)
         except Exception as exc:  # pragma: no cover

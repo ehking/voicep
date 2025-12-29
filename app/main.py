@@ -11,7 +11,7 @@ from .db import Base, SessionLocal, engine
 from .models import Job
 from .settings import settings
 from .utils import ensure_storage_dirs, generate_job_id, reset_processing_jobs, safe_filename
-from .worker import enqueue_job, start_cleanup, start_workers
+from .worker import enqueue_job, job_queue, start_cleanup, start_workers
 
 app = FastAPI(title="مترجم ویس‌های شلوغ ایرانی")
 
@@ -35,7 +35,11 @@ def startup_event():
         reset_processing_jobs(session)
         queued = session.query(Job).filter(Job.status == "queued").all()
         for job in queued:
-            enqueue_job(job.id)
+            if not enqueue_job(job.id):
+                job.status = "error"
+                job.error_message = "صف پردازش پر است"
+                job.progress = job.progress or 0
+        session.commit()
     finally:
         session.close()
     start_workers()
@@ -58,6 +62,9 @@ def error_response(code: str, message: str, status_code: int = 400):
 async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="فایل نامعتبر است")
+
+    if job_queue.full():
+        return error_response("QUEUE_FULL", "صف پردازش پر است، لطفاً بعداً تلاش کنید", status_code=429)
 
     safe_name = safe_filename(file.filename)
     job_id = generate_job_id()
@@ -91,7 +98,14 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
     db.add(job)
     db.commit()
 
-    enqueue_job(job_id)
+    if not enqueue_job(job_id):
+        job.status = "error"
+        job.error_message = "صف پردازش پر است"
+        job.progress = 0
+        db.add(job)
+        db.commit()
+        file_path.unlink(missing_ok=True)
+        return error_response("QUEUE_FULL", "صف پردازش پر است، لطفاً بعداً تلاش کنید", status_code=429)
 
     return {"ok": True, "job": job.to_dict()}
 
