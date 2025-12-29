@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>مترجم ویس‌های شلوغ ایرانی</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900" style="font-family: 'Vazirmatn', sans-serif;">
+  <div class="min-h-screen container mx-auto px-4 py-8">
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold text-indigo-700">مترجم ویس‌های شلوغ ایرانی (فاز ۱)</h1>
+      <p class="text-gray-600 mt-1">آپلود، حذف نویز، تبدیل گفتار به متن و پاکسازی به صورت محلی</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <section class="bg-white rounded-lg shadow p-6" id="upload-card">
+          <h2 class="text-lg font-semibold mb-4">آپلود فایل صوتی</h2>
+          <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-400 transition bg-gray-50">
+            <p class="text-gray-700 mb-2">فایل را بکشید و اینجا رها کنید</p>
+            <p class="text-sm text-gray-500">یا</p>
+            <button id="select-file" class="mt-3 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">انتخاب فایل</button>
+            <input type="file" id="file-input" accept="audio/*" class="hidden" />
+            <p class="text-xs text-gray-500 mt-3">حداکثر ۲۰ مگابایت و ۵ دقیقه</p>
+          </div>
+        </section>
+
+        <section class="bg-white rounded-lg shadow p-6" id="status-card">
+          <h2 class="text-lg font-semibold mb-4">وضعیت پردازش</h2>
+          <div class="flex items-center gap-3 mb-3">
+            <div id="status-indicator" class="w-3 h-3 rounded-full bg-gray-300"></div>
+            <p id="status-text" class="font-medium">در انتظار آپلود</p>
+            <div id="spinner" class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-3">
+            <div id="progress-bar" class="bg-indigo-600 h-3 rounded-full" style="width:0%"></div>
+          </div>
+          <p class="text-sm text-gray-500 mt-2" id="progress-label">۰%</p>
+        </section>
+
+        <section class="bg-white rounded-lg shadow p-6" id="result-card">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">نتیجه</h2>
+            <div class="flex gap-2">
+              <button id="toggle-clean" class="px-3 py-1 text-sm bg-indigo-600 text-white rounded">متن تمیز</button>
+              <button id="toggle-raw" class="px-3 py-1 text-sm bg-gray-200 text-gray-800 rounded">متن خام</button>
+            </div>
+          </div>
+          <textarea id="result-text" class="w-full h-48 border rounded p-3 text-sm focus:outline-none" readonly></textarea>
+          <div class="flex gap-3 mt-3">
+            <button id="copy-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">کپی</button>
+            <button id="download-btn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">دانلود فایل</button>
+          </div>
+        </section>
+      </div>
+
+      <aside class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">تاریخچه اخیر</h2>
+          <button id="refresh-history" class="text-sm text-indigo-600 hover:underline">به‌روزرسانی</button>
+        </div>
+        <ul id="history-list" class="space-y-3 text-sm text-gray-700"></ul>
+      </aside>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 bg-gray-800 text-white px-4 py-3 rounded shadow-lg opacity-0 pointer-events-none transition"></div>
+  <script src="/web/app.js"></script>
+</body>
+</html>
