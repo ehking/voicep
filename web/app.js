@@ -1,24 +1,30 @@
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const selectFileBtn = document.getElementById('select-file');
-const statusIndicator = document.getElementById('status-indicator');
-const statusText = document.getElementById('status-text');
-const spinner = document.getElementById('spinner');
-const progressBar = document.getElementById('progress-bar');
-const progressLabel = document.getElementById('progress-label');
+const jobsListEl = document.getElementById('jobs-list');
+const jobsEmptyEl = document.getElementById('jobs-empty');
+const toast = document.getElementById('toast');
 const resultText = document.getElementById('result-text');
 const toggleClean = document.getElementById('toggle-clean');
 const toggleRaw = document.getElementById('toggle-raw');
 const copyBtn = document.getElementById('copy-btn');
 const downloadBtn = document.getElementById('download-btn');
-const historyList = document.getElementById('history-list');
 const refreshHistoryBtn = document.getElementById('refresh-history');
-const toast = document.getElementById('toast');
+const selectedJobLabel = document.getElementById('selected-job-label');
+const resultStatus = document.getElementById('result-status');
 
-let currentJobId = null;
-let currentResult = { raw_text: '', cleaned_text: '' };
+const jobs = new Map();
+let selectedJobId = null;
 let showClean = true;
 let pollInterval = null;
+let resultsCache = new Map();
+
+const statusMap = {
+  queued: 'در صف',
+  processing: 'در حال پردازش',
+  done: 'انجام شد',
+  error: 'خطا'
+};
 
 function showToast(message, type = 'info') {
   toast.textContent = message;
@@ -30,22 +36,59 @@ function showToast(message, type = 'info') {
   }, 3000);
 }
 
-function setStatus(status, progress) {
-  const statusMap = {
-    queued: 'در صف',
-    processing: 'در حال پردازش',
-    done: 'انجام شد',
-    error: 'خطا'
-  };
-  statusIndicator.className = 'w-3 h-3 rounded-full ' + (status === 'done' ? 'bg-green-500' : status === 'error' ? 'bg-red-500' : 'bg-yellow-400');
-  statusText.textContent = statusMap[status] || status;
-  spinner.classList.toggle('hidden', status !== 'processing');
-  progressBar.style.width = `${progress || 0}%`;
-  progressLabel.textContent = `${progress || 0}%`;
+function humanStatus(job) {
+  return statusMap[job.status] || job.status;
+}
+
+function renderJobs() {
+  const items = Array.from(jobs.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  jobsListEl.innerHTML = '';
+  if (!items.length) {
+    jobsEmptyEl.classList.remove('hidden');
+    return;
+  }
+  jobsEmptyEl.classList.add('hidden');
+  items.forEach(job => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'border rounded p-3 flex flex-col gap-2 bg-gray-50';
+    const header = document.createElement('div');
+    header.className = 'flex items-center justify-between gap-2';
+    const title = document.createElement('div');
+    title.innerHTML = `<div class="font-semibold">${job.original_filename}</div><div class="text-xs text-gray-500">${new Date(job.created_at).toLocaleString('fa-IR')}</div>`;
+    const statusBadge = document.createElement('span');
+    statusBadge.className = 'text-xs px-2 py-1 rounded ' + (job.status === 'done' ? 'bg-green-100 text-green-700' : job.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700');
+    statusBadge.textContent = humanStatus(job);
+    header.appendChild(title);
+    header.appendChild(statusBadge);
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'w-full bg-gray-200 rounded-full h-2';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'bg-indigo-600 h-2 rounded-full';
+    progressBar.style.width = `${job.progress || 0}%`;
+    progressWrap.appendChild(progressBar);
+
+    const actions = document.createElement('div');
+    actions.className = 'flex items-center justify-between text-xs text-gray-600';
+    const progressLabel = document.createElement('span');
+    progressLabel.textContent = `${job.progress || 0}%`;
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'px-3 py-1 bg-white border rounded hover:bg-gray-100';
+    viewBtn.textContent = 'نمایش';
+    viewBtn.addEventListener('click', () => selectJob(job.id));
+    actions.appendChild(progressLabel);
+    actions.appendChild(viewBtn);
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(progressWrap);
+    wrapper.appendChild(actions);
+    jobsListEl.appendChild(wrapper);
+  });
 }
 
 function updateResultView() {
-  resultText.value = showClean ? (currentResult.cleaned_text || '') : (currentResult.raw_text || '');
+  const result = resultsCache.get(selectedJobId) || { raw_text: '', cleaned_text: '' };
+  resultText.value = showClean ? (result.cleaned_text || '') : (result.raw_text || '');
   toggleClean.classList.toggle('bg-indigo-600', showClean);
   toggleClean.classList.toggle('text-white', showClean);
   toggleClean.classList.toggle('bg-gray-200', !showClean);
@@ -59,60 +102,83 @@ function updateResultView() {
 async function uploadFile(file) {
   const formData = new FormData();
   formData.append('file', file);
-  setStatus('queued', 5);
   try {
     const res = await fetch('/api/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.ok) {
       throw new Error(data.error?.message || 'خطا در آپلود');
     }
-    currentJobId = data.job.id;
+    jobs.set(data.job.id, data.job);
+    renderJobs();
     showToast('فایل دریافت شد و در صف قرار گرفت', 'success');
     startPolling();
-    loadHistory();
   } catch (err) {
     showToast(err.message, 'error');
   }
+}
+
+function handleFiles(fileList) {
+  if (!fileList?.length) return;
+  Array.from(fileList).forEach(file => uploadFile(file));
 }
 
 function startPolling() {
-  if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(checkStatus, 1500);
+  if (pollInterval) return;
+  pollInterval = setInterval(checkActiveJobs, 1500);
 }
 
-async function checkStatus() {
-  if (!currentJobId) return;
-  try {
-    const res = await fetch(`/api/jobs/${currentJobId}`);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error?.message || 'خطا در وضعیت');
-    const job = data.job;
-    setStatus(job.status, job.progress);
-    if (job.status === 'done') {
-      clearInterval(pollInterval);
-      await loadResult();
-    } else if (job.status === 'error') {
-      clearInterval(pollInterval);
-      showToast(job.error_message || 'خطا در پردازش', 'error');
-    }
-  } catch (err) {
-    showToast(err.message, 'error');
+async function checkActiveJobs() {
+  const activeJobs = Array.from(jobs.values()).filter(j => ['queued', 'processing'].includes(j.status));
+  if (!activeJobs.length) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+    return;
   }
+  await Promise.all(activeJobs.map(async (job) => {
+    try {
+      const res = await fetch(`/api/jobs/${job.id}`);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error?.message || 'خطا در وضعیت');
+      jobs.set(job.id, data.job);
+      if (selectedJobId === job.id) {
+        selectedJobLabel.textContent = `فایل: ${data.job.original_filename}`;
+        resultStatus.textContent = `وضعیت: ${humanStatus(data.job)}`;
+      }
+      if (data.job.status === 'done') {
+        await loadResult(job.id);
+      } else if (data.job.status === 'error') {
+        showToast(data.job.error_message || 'خطا در پردازش', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }));
+  renderJobs();
 }
 
-async function loadResult(jobId = null) {
-  const id = jobId || currentJobId;
-  if (!id) return;
+async function selectJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+  selectedJobId = jobId;
+  selectedJobLabel.textContent = `فایل: ${job.original_filename}`;
+  resultStatus.textContent = `وضعیت: ${humanStatus(job)}`;
+  if (job.status === 'done') {
+    await loadResult(jobId);
+  } else {
+    resultText.value = '';
+    startPolling();
+  }
+  updateResultView();
+}
+
+async function loadResult(jobId) {
   try {
-    const res = await fetch(`/api/jobs/${id}/result`);
+    const res = await fetch(`/api/jobs/${jobId}/result`);
     const data = await res.json();
-    if (!data.ok) {
-      throw new Error(data.error?.message || 'نتیجه آماده نیست');
-    }
-    currentResult = data.result;
-    currentJobId = id;
-    showClean = true;
+    if (!data.ok) throw new Error(data.error?.message || 'نتیجه آماده نیست');
+    resultsCache.set(jobId, data.result);
     updateResultView();
+    resultStatus.textContent = `وضعیت: ${humanStatus(jobs.get(jobId) || { status: 'done' })}`;
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -123,30 +189,11 @@ async function loadHistory() {
     const res = await fetch('/api/history?limit=10');
     const data = await res.json();
     if (!data.ok) throw new Error(data.error?.message || 'خطا در تاریخچه');
-    historyList.innerHTML = '';
-    data.jobs.forEach(job => {
-      const li = document.createElement('li');
-      li.className = 'p-3 border rounded cursor-pointer hover:bg-gray-50';
-      li.innerHTML = `<div class="flex justify-between"><span class="font-medium">${job.original_filename}</span><span class="text-xs text-gray-500">${new Date(job.created_at).toLocaleString('fa-IR')}</span></div><div class="text-xs text-gray-600">وضعیت: ${job.status}</div>`;
-      li.addEventListener('click', async () => {
-        currentJobId = job.id;
-        setStatus(job.status, job.progress);
-        if (job.status === 'done') {
-          await loadResult(job.id);
-        } else {
-          startPolling();
-        }
-      });
-      historyList.appendChild(li);
-    });
+    data.jobs.forEach(job => jobs.set(job.id, job));
+    renderJobs();
   } catch (err) {
     showToast(err.message, 'error');
   }
-}
-
-function handleFiles(files) {
-  if (!files.length) return;
-  uploadFile(files[0]);
 }
 
 selectFileBtn.addEventListener('click', () => fileInput.click());
@@ -173,28 +220,6 @@ dropZone.addEventListener('drop', (e) => {
   }
 });
 
-copyBtn.addEventListener('click', async () => {
-  if (!resultText.value) return;
-  await navigator.clipboard.writeText(resultText.value);
-  showToast('کپی شد', 'success');
-});
-
-downloadBtn.addEventListener('click', async () => {
-  if (!currentJobId) return;
-  const res = await fetch(`/api/jobs/${currentJobId}/download`);
-  if (!res.ok) {
-    showToast('فایل آماده نیست', 'error');
-    return;
-  }
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `result_${currentJobId}.txt`;
-  a.click();
-  window.URL.revokeObjectURL(url);
-});
-
 toggleClean.addEventListener('click', () => {
   showClean = true;
   updateResultView();
@@ -205,6 +230,31 @@ toggleRaw.addEventListener('click', () => {
   updateResultView();
 });
 
+copyBtn.addEventListener('click', async () => {
+  if (!resultText.value) return;
+  await navigator.clipboard.writeText(resultText.value);
+  showToast('کپی شد', 'success');
+});
+
+downloadBtn.addEventListener('click', async () => {
+  if (!selectedJobId) return;
+  const res = await fetch(`/api/jobs/${selectedJobId}/download`);
+  if (!res.ok) {
+    showToast('فایل آماده نیست', 'error');
+    return;
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `result_${selectedJobId}.txt`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+});
+
 refreshHistoryBtn.addEventListener('click', loadHistory);
 
+dropZone.addEventListener('click', () => fileInput.click());
+
 loadHistory();
+startPolling();

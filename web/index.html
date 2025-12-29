@@ -22,49 +22,41 @@
         <section class="bg-white rounded-lg shadow p-6" id="upload-card">
           <h2 class="text-lg font-semibold mb-4">آپلود فایل صوتی</h2>
           <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-400 transition bg-gray-50">
-            <p class="text-gray-700 mb-2">فایل را بکشید و اینجا رها کنید</p>
+            <p class="text-gray-700 mb-2">فایل‌ها را بکشید و اینجا رها کنید</p>
             <p class="text-sm text-gray-500">یا</p>
-            <button id="select-file" class="mt-3 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">انتخاب فایل</button>
-            <input type="file" id="file-input" accept="audio/*" class="hidden" />
-            <p class="text-xs text-gray-500 mt-3">حداکثر ۲۰ مگابایت و ۵ دقیقه</p>
+            <button id="select-file" class="mt-3 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">انتخاب فایل‌ها</button>
+            <input type="file" id="file-input" accept="audio/*" multiple class="hidden" />
+            <p class="text-xs text-gray-500 mt-3">حداکثر ۲۰ مگابایت و ۵ دقیقه برای هر فایل</p>
           </div>
         </section>
 
-        <section class="bg-white rounded-lg shadow p-6" id="status-card">
-          <h2 class="text-lg font-semibold mb-4">وضعیت پردازش</h2>
-          <div class="flex items-center gap-3 mb-3">
-            <div id="status-indicator" class="w-3 h-3 rounded-full bg-gray-300"></div>
-            <p id="status-text" class="font-medium">در انتظار آپلود</p>
-            <div id="spinner" class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
-          </div>
-          <div class="w-full bg-gray-200 rounded-full h-3">
-            <div id="progress-bar" class="bg-indigo-600 h-3 rounded-full" style="width:0%"></div>
-          </div>
-          <p class="text-sm text-gray-500 mt-2" id="progress-label">۰%</p>
-        </section>
-
-        <section class="bg-white rounded-lg shadow p-6" id="result-card">
+        <section class="bg-white rounded-lg shadow p-6" id="jobs-card">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">نتیجه</h2>
-            <div class="flex gap-2">
-              <button id="toggle-clean" class="px-3 py-1 text-sm bg-indigo-600 text-white rounded">متن تمیز</button>
-              <button id="toggle-raw" class="px-3 py-1 text-sm bg-gray-200 text-gray-800 rounded">متن خام</button>
-            </div>
+            <h2 class="text-lg font-semibold">صف و وضعیت کارها</h2>
+            <button id="refresh-history" class="text-sm text-indigo-600 hover:underline">به‌روزرسانی</button>
           </div>
-          <textarea id="result-text" class="w-full h-48 border rounded p-3 text-sm focus:outline-none" readonly></textarea>
-          <div class="flex gap-3 mt-3">
-            <button id="copy-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">کپی</button>
-            <button id="download-btn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">دانلود فایل</button>
-          </div>
+          <div id="jobs-empty" class="text-sm text-gray-500">هنوز کاری ثبت نشده است.</div>
+          <div id="jobs-list" class="space-y-3"></div>
         </section>
       </div>
 
-      <aside class="bg-white rounded-lg shadow p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">تاریخچه اخیر</h2>
-          <button id="refresh-history" class="text-sm text-indigo-600 hover:underline">به‌روزرسانی</button>
+      <aside class="bg-white rounded-lg shadow p-6 space-y-4" id="result-card">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">نمایش نتیجه</h2>
+            <p class="text-sm text-gray-500" id="selected-job-label">ابتدا یک کار را انتخاب کنید</p>
+          </div>
+          <div class="flex gap-2">
+            <button id="toggle-clean" class="px-3 py-1 text-sm bg-indigo-600 text-white rounded">متن تمیز</button>
+            <button id="toggle-raw" class="px-3 py-1 text-sm bg-gray-200 text-gray-800 rounded">متن خام</button>
+          </div>
         </div>
-        <ul id="history-list" class="space-y-3 text-sm text-gray-700"></ul>
+        <div class="text-sm text-gray-700" id="result-status">وضعیت: -</div>
+        <textarea id="result-text" class="w-full h-60 border rounded p-3 text-sm focus:outline-none" readonly></textarea>
+        <div class="flex gap-3 mt-3">
+          <button id="copy-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">کپی</button>
+          <button id="download-btn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">دانلود فایل</button>
+        </div>
       </aside>
     </div>
   </div>
