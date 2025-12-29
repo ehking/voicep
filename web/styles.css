@@ -1,0 +1,7 @@
+body {
+  font-family: 'Vazirmatn', sans-serif;
+}
+
+#toast {
+  transition: opacity 0.3s ease;
+}
